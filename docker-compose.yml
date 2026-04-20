@@ -15,7 +15,7 @@ services:
 
   watcher:
     build: .
-    command: python src/watcher/drive_watcher.py
+    command: python -m src.watcher.drive_watcher
     depends_on:
       - db
     env_file:
@@ -23,7 +23,7 @@ services:
 
   consumer:
     build: .
-    command: python src/consumer/processor.py
+    command: python -m src.consumer.processor
     depends_on:
       - db
     env_file:
