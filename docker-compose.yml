@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auditbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  watcher:
+    build: .
+    command: python src/watcher/drive_watcher.py
+    depends_on:
+      - db
+    env_file:
+      - .env
+
+  consumer:
+    build: .
+    command: python src/consumer/processor.py
+    depends_on:
+      - db
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:
