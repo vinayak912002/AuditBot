@@ -1,34 +1,9 @@
-# System Overview (Use Case Diagram)
+# User Journey Sequence Diagrams
 
-```mermaid
-graph TD
-    User((User/Accountant))
-    GD[Google Drive]
-    AI[AI Provider]
-    
-    subgraph AuditBot
-        UC1(Register Google Account)
-        UC2(Scan Drive for Invoices)
-        UC3(Download & Normalize)
-        UC4(Parse Document)
-        UC5(Extract Data)
-        UC6(Store Extracted Data)
-        UC7(Retry Failed Jobs)
-    end
+This document highlights the specific sequences triggered by user actions.
 
-    User --> UC1
-    UC2 --- GD
-    UC3 --- GD
-    UC5 --- AI
-    
-    UC2 -.-> UC3
-    UC3 -.-> UC4
-    UC4 -.-> UC5
-    UC5 -.-> UC6
-    UC7 -.-> UC3
-```
-
-# User Registration Sequence
+## 1. User Registration Flow
+Triggered when the user runs the registration command to authorize their Google Drive.
 
 ```mermaid
 sequenceDiagram
@@ -51,4 +26,49 @@ sequenceDiagram
     Watcher->>DB: SessionLocal (Save/Update token_data)
     DB-->>Watcher: Commit
     Watcher-->>User: "Registered new user: email@example.com"
+```
+
+## 2. File Upload & Processing Flow
+Triggered when a user adds a new invoice to their monitored Google Drive folder.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant GDrive as Google Drive (Folder)
+    participant Watcher as src.watcher.drive_watcher (Watcher Loop)
+    participant DB as PostgreSQL (InvoiceJob Table)
+    participant Consumer as src.consumer.processor (Consumer Service)
+    participant AI as src.consumer.ai_providers (AI Factory)
+
+    Note over User,GDrive: User uploads Invoice.pdf to Drive
+    
+    loop Every POLL_INTERVAL
+        Watcher->>DB: Query UserCredential table
+        DB-->>Watcher: List of registered users
+        Watcher->>GDrive: service.files().list(query)
+        GDrive-->>Watcher: List of File IDs
+        Watcher->>DB: Idempotency check (filter_by file_id)
+        alt File is New
+            Watcher->>DB: Add InvoiceJob(status=NEW)
+        end
+    end
+
+    loop Worker Loop
+        Consumer->>DB: SELECT FOR UPDATE SKIP LOCKED (status=NEW)
+        DB-->>Consumer: Returns Job
+        Consumer->>DB: Update status=PROCESSING
+        
+        rect rgb(37, 13, 78)
+            Note right of Consumer: _run_pipeline()
+            Consumer->>GDrive: _download_file() (get_media)
+            GDrive-->>Consumer: Raw Bytes
+            Consumer->>Consumer: _parse_with_mineru() (Mock Parser)
+            Consumer->>AI: extract_invoice_data(parsed_text)
+            AI-->>Consumer: Extracted JSON
+        end
+
+        Consumer->>DB: Update status=PROCESSED, extracted_data=JSON
+        DB-->>Consumer: Commit
+    end
 ```
