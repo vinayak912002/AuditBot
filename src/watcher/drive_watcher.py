@@ -61,9 +61,14 @@ class MultiUserDriveWatcher:
         2. Receives the authorization code.
         3. Exchanges it for a token and stores it in the database.
         """
+
+        # flow here refers to the step by step process of authenticating a user and getting access tokens
+        # the flow object irchestrates the whole process
         flow = InstalledAppFlow.from_client_config(self.client_config, SCOPES)
-        creds = flow.run_local_server(port=0)
+        creds = flow.run_local_server(port=0) # This contains the access_token, refresh_token and the expiry credentials when the oauth flow completes
         
+        # A service a client that is used to talk to a server.
+        # In this case a service which interacts with google's oauth2 server is built and the credetials are loaded so that it can interact with it on behalf of the user
         # Identity Check: Use the 'oauth2' service to find out who just logged in.
         service = build('oauth2', 'v2', credentials=creds)
         user_info = service.userinfo().get().execute()
