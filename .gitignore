@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Environment variables
+.env
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Databases (if any local sqlite/etc)
+*.sqlite3
+
+# Distribution / packages
+dist/
+build/
+*.egg-info/
+
+# Google Auth
+# We store tokens in the DB, but just in case local files are created
+tokens.json
+credentials.json
