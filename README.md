@@ -57,32 +57,90 @@ For a production deployment on AWS, the following stack is recommended:
 ### 4. Storage (Amazon EFS - Optional)
 - If using MinerU's local caching or temporary file processing, mount an **Amazon EFS** volume to your ECS tasks for persistent scratch space.
 
-## 🛠️ Setup
+## 🛠️ Setup Instructions
 
-### 1. Environment
+### Option A: Local Setup
+
+**1. System Dependencies**
+AuditBot requires headless LibreOffice and MinerU system dependencies to convert and parse documents.
+- **Ubuntu/Debian**: `sudo apt-get install libreoffice libgl1 libglib2.0-0`
+- **MacOS**: `brew install --cask libreoffice`
+- **Windows**: 
+  1. Download and install [LibreOffice for Windows](https://www.libreoffice.org/download/download-libreoffice/).
+  2. Add the installation directory (usually `C:\Program Files\LibreOffice\program`) to your Windows System `PATH` environment variable. This ensures the `soffice` command is globally available.
+
+**2. MinerU Configuration (Required)**
+MinerU requires a configuration file named `magic-pdf.json` located in your user home directory (e.g., `C:\Users\YourUser\magic-pdf.json` or `~/magic-pdf.json`).
+Create the file with the following minimum required structure. **On Windows**, ensure you set the layout model to `doclayout_yolo` to avoid complex `detectron2` compile errors:
+```json
+{
+  "models-dir": "/tmp/models",
+  "device-mode": "cpu",
+  "table-config": {
+    "model": "rapid_table",
+    "enable": false,
+    "max_time": 400
+  },
+  "layout-config": {
+    "model": "doclayout_yolo"
+  },
+  "formula-config": {
+    "mfd_model": "yolov8_mfd",
+    "mfr_model": "unimernet_v2_small",
+    "enable": false
+  }
+}
+```
+*(Note: Change `"models-dir"` to a valid local path on Windows like `C:/Users/YourUser/.mineru/models`)*
+
+**3. Download AI Models (Required for MinerU)**
+MinerU requires you to download the actual machine learning weights (roughly ~5GB) into the directory specified in your config (`C:/Users/YourUser/.mineru/models` or `/tmp/models`). 
+
+You can download them automatically using Python:
+```bash
+pip install huggingface_hub
+python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='opendatalab/pdf-extract-kit-1.0', local_dir='C:/Users/YourUser/.mineru/models')"
+```
+*(Make sure `local_dir` perfectly matches the `"models-dir"` in your `magic-pdf.json`)*
+
+**4. Python Environment**
 Create a Conda environment and install dependencies:
 ```bash
-conda create -n AuditBot python=3.13
+conda create -n AuditBot python=3.12
 conda activate AuditBot
 pip install -r requirements.txt
 ```
 
-### 2. Configuration
-Create a `.env` file based on `.env.example`:
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Obtain from Google Cloud Console (OAuth 2.0 Client IDs).
-- `ANTHROPIC_API_KEY`: For Claude-based extraction.
-- `DATABASE_URL`: Connection string for your PostgreSQL instance.
-
-### 3. Database Initialization
+**5. Configuration & Database**
+Create a `.env` file based on `.env.example`. Then initialize the database:
 ```bash
 python main.py --init-db
 ```
 
-### 4. User Registration
+### Option B: Docker Setup (Recommended)
+Docker ensures all system dependencies (LibreOffice, libgl1) are automatically handled.
+
+**1. Configuration**
+Create a `.env` file based on `.env.example`. Set your `DATABASE_URL` to point to the dockerized postgres instance (e.g., `postgresql://postgres:postgresroot@db:5432/auditbot`).
+
+**2. Build and Run**
+```bash
+docker-compose up --build -d
+```
+*Note: You must still run the User Registration flow interactively (see below) before the background containers will pick up files.*
+
+---
+
+### 👤 User Registration (Multi-Tenant)
+AuditBot supports true multi-tenancy. Each user must authorize their Google account and link a specific Drive folder.
+
 To authorize a Google Drive account:
 ```bash
 python -m src.watcher.drive_watcher --register
 ```
+1. A browser window will open for Google OAuth.
+2. The CLI will then prompt you to enter the **Folder URL or ID** you want AuditBot to monitor.
+3. AuditBot will automatically create an `output/` subfolder inside that location where the extracted spreadsheets will be securely deposited.
 
 ## 🏃 Running the Service
 

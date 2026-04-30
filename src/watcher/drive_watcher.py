@@ -17,7 +17,7 @@ os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 # Added userinfo.email scope to identify who is logging in
 SCOPES = [
-    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/userinfo.email'
 ]
 
@@ -73,6 +73,12 @@ class MultiUserDriveWatcher:
         service = build('oauth2', 'v2', credentials=creds)
         user_info = service.userinfo().get().execute()
         email = user_info['email']
+        
+        folder_input = ""
+        while not folder_input:
+            folder_input = input("\nEnter the Google Drive Folder URL or ID you want to monitor for this account:\n> ").strip()
+            
+        folder_id = folder_input.split('/')[-1].split('?')[0] if 'http' in folder_input else folder_input
 
         with SessionLocal() as db:
             # Update existing user or create a new one
@@ -81,11 +87,12 @@ class MultiUserDriveWatcher:
             
             if existing:
                 existing.token_data = token_json
-                logger.info(f"Updated credentials for: {email}")
+                existing.drive_folder_id = folder_id
+                logger.info(f"Updated credentials and folder ID for: {email}")
             else:
-                new_user = UserCredential(email=email, token_data=token_json)
+                new_user = UserCredential(email=email, token_data=token_json, drive_folder_id=folder_id)
                 db.add(new_user)
-                logger.info(f"Registered new user: {email}")
+                logger.info(f"Registered new user: {email} watching folder: {folder_id}")
             db.commit()
 
     def poll_all_users(self):
@@ -128,11 +135,16 @@ class MultiUserDriveWatcher:
 
         # Build the Drive API client
         service = build('drive', 'v3', credentials=creds)
-        folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID") 
+        folder_id = user_record.drive_folder_id 
         
-        logger.info(f"Scanning Drive for user: {user_record.email}")
+        if not folder_id:
+            logger.warning(f"No Drive folder configured for user: {user_record.email}. Skipping.")
+            return
+
+        logger.info(f"Scanning Drive folder '{folder_id}' for user: {user_record.email}")
         # Search query: Look for non-trashed files inside the specific folder.
-        query = f"'{folder_id}' in parents and trashed = false"
+        # We explicitly exclude the "output" folder AND Google Workspace files like Spreadsheets.
+        query = f"'{folder_id}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder' and mimeType != 'application/vnd.google-apps.spreadsheet'"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         files = results.get('files', [])
 

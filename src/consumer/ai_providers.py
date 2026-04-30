@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import os
 import json
 import logging
+from src.consumer.schemas import InvoiceData
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,17 @@ class BaseAIProvider(ABC):
     Interface for AI extraction providers. 
     Every new provider (e.g., DeepSeek, Groq) must implement this class.
     """
+    def _build_prompt(self, text: str) -> str:
+        """Generates a strict prompt injecting the required JSON Schema."""
+        schema_json = json.dumps(InvoiceData.model_json_schema(), indent=2)
+        return (
+            "You are an expert data extraction assistant.\n"
+            "Extract the invoice details from the text below.\n"
+            "You MUST return ONLY valid JSON that strictly adheres to the following JSON Schema:\n"
+            f"{schema_json}\n\n"
+            f"Text to extract from:\n{text}"
+        )
+
     @abstractmethod
     def extract_invoice_data(self, text: str) -> dict:
         """Standard method to extract structured JSON from raw text."""
@@ -23,16 +35,19 @@ class AnthropicProvider(BaseAIProvider):
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620")
 
     def extract_invoice_data(self, text: str) -> dict:
-        prompt = f"Extract Vendor, Date, Amount, and Tax from the following text:\n\n{text}\n\nReturn JSON only."
+        prompt = self._build_prompt(text)
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
         try:
-            return json.loads(response.content[0].text)
-        except Exception:
-            return {"raw_response": response.content[0].text}
+            raw_dict = json.loads(response.content[0].text)
+            validated_data = InvoiceData.model_validate(raw_dict)
+            return validated_data.model_dump()
+        except Exception as e:
+            logger.error(f"Anthropic Validation/Parsing failed: {e}")
+            return {"raw_response": response.content[0].text, "error": str(e)}
 
 class OpenAIProvider(BaseAIProvider):
     """Implementation for OpenAI's GPT models."""
@@ -42,36 +57,46 @@ class OpenAIProvider(BaseAIProvider):
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
     def extract_invoice_data(self, text: str) -> dict:
-        prompt = f"Extract Vendor, Date, Amount, and Tax from the following text:\n\n{text}\n\nReturn JSON only."
+        prompt = self._build_prompt(text)
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         try:
-            return json.loads(response.choices[0].message.content)
-        except Exception:
-            return {"raw_response": response.choices[0].message.content}
+            raw_dict = json.loads(response.choices[0].message.content)
+            validated_data = InvoiceData.model_validate(raw_dict)
+            return validated_data.model_dump()
+        except Exception as e:
+            logger.error(f"OpenAI Validation/Parsing failed: {e}")
+            return {"raw_response": response.choices[0].message.content, "error": str(e)}
 
 class GeminiProvider(BaseAIProvider):
-    """Implementation for Google's Gemini models."""
+    """Implementation for Google's Gemini models using the new google-genai SDK."""
     def __init__(self):
-        import google.generativeai as genai
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        from google import genai
+        # Initialize the new genai Client with the API key from environment variables
+        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         self.model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
-        self.model = genai.GenerativeModel(self.model_name)
 
     def extract_invoice_data(self, text: str) -> dict:
-        prompt = f"Extract Vendor, Date, Amount, and Tax from the following text:\n\n{text}\n\nReturn JSON only."
-        # Using Google's native JSON mode
-        response = self.model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
+        prompt = self._build_prompt(text)
+        
+        # Call the Gemini model using the modern Client.models API
+        # We pass response_mime_type to enforce structured JSON output from the model
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config={"response_mime_type": "application/json"}
         )
+        
         try:
-            return json.loads(response.text)
-        except Exception:
-            return {"raw_response": response.text}
+            raw_dict = json.loads(response.text)
+            validated_data = InvoiceData.model_validate(raw_dict)
+            return validated_data.model_dump()
+        except Exception as e:
+            logger.error(f"Gemini Validation/Parsing failed: {e}")
+            return {"raw_response": response.text, "error": str(e)}
 
 def get_ai_provider() -> BaseAIProvider:
     """

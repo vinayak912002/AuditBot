@@ -4,7 +4,7 @@
 An automated, multi-tenant AI agent that watches Google Drive folders, parses invoices using MinerU, extracts structured data via any major LLM (Claude, GPT, Gemini), and saves results to Google Sheets and a PostgreSQL state store.
 
 ## 💻 Tech Stack
-- **Language**: Python 3.13
+- **Language**: Python 3.12 (Downgraded from 3.13 for `pycocotools`/MinerU compatibility)
 - **Database**: PostgreSQL (Source of truth for jobs and user credentials)
 - **ORM**: SQLAlchemy
 - **APIs**: Google Drive (OAuth2), Anthropic (Claude), OpenAI (GPT-4), Google Gemini (Generative AI)
@@ -24,18 +24,22 @@ An automated, multi-tenant AI agent that watches Google Drive folders, parses in
 5.  **Model Flexibility**: ✅ Support for custom model strings (e.g., Flash, Haiku) via environment variables.
 6.  **Gemini Testing**: ✅ Extraction logic (Step 3/4) verified using Gemini Flash. Confirmation that the AI integration is working even while MinerU parsing is still a placeholder.
 7.  **Full Documentation**: ✅ Completed `README.md`, `testing.md`, and `active_context.md`.
-8.  **Processing Pipeline**: 🚧 Skeleton implemented; MinerU and Sheets integration pending.
+8.  **Processing Pipeline**: ✅ Headless LibreOffice conversion and MinerU PDF-to-Markdown integrated.
+9.  **AI Validation**: ✅ Pydantic schema injection into LLM prompts guarantees structured output.
+10. **Google Sheets Storing**: ✅ Generates an `output` subfolder and securely deposits spreadsheet rows per user.
+11. **True Multi-Tenancy**: ✅ Users provide their specific folder ID during CLI registration, eliminating global `.env` dependencies.
+
+12. **MinerU Integration Fixed**: ✅ Upgraded code to use the modern `magic-pdf` v1.3.12 API (`PymuDocDataset`, `doc_analyze`).
+13. **MinerU Environment Setup**: ✅ Configured `magic-pdf.json` to use `doclayout_yolo` (bypassing tricky `detectron2` installs on Windows), injected it into the Docker build process, and successfully downloaded the 5GB HuggingFace models (`opendatalab/pdf-extract-kit-1.0`).
 
 ## 🚀 Immediate Next Steps (To-Do)
-1.  **Fix Deprecations**: 
-    - Replace `datetime.utcnow()` with `datetime.now(datetime.UTC)` in `processor.py`.
-    - Migrate Gemini SDK from `google-generativeai` to `google-genai`.
-2.  **Integrate MinerU**: In `src/consumer/processor.py`, replace `_parse_with_mineru` placeholder with actual `magic-pdf` calls.
-3.  **Google Sheets Storing**: Implement the `Storing` step in the consumer to append `extracted_data` to a user-specific Google Sheet.
-4.  **Validation Logic**: Implement Pydantic models to validate the JSON returned by the AI providers.
+- [ ] **End-to-End Testing**: Run the full pipeline (upload document -> watcher -> consumer -> AI extraction -> Google Sheets) and confirm text extraction from MinerU outputs correctly to Sheets.
+- [ ] **Restart Failed Jobs**: Run `UPDATE public.invoice_jobs SET retry_count = 0, status = 'NEW', error_message = NULL WHERE status = 'FAILED';` to retry the failed test files with the newly functioning MinerU setup.
 
-## ⚠️ Deprecation Warnings
-- **Google Gemini SDK**: Support for the `google.generativeai` package has ended. It will no longer be receiving updates or bug fixes. The project needs to switch to the `google.genai` package as soon as possible.
+## ⚠️ Known Gotchas / Troubleshooting
+- **MinerU Model Weights**: MinerU requires ~5GB of model weights pulled from HuggingFace to function. This is handled via `huggingface_hub` in the setup script and Dockerfile.
+- **MinerU Layout Model**: On Windows, we explicitly configure `magic-pdf.json` to use `doclayout_yolo` instead of `layoutlmv3` to avoid C++ `detectron2` compilation errors.
+- **Image Writing**: MinerU uses a `DummyWriter` in `processor.py` to discard cropped images into memory since we only care about the Markdown layout for LLM extraction, saving disk space.
 
 ## 💡 Key Decisions
 - **Master Switch**: The `AI_PROVIDER` env variable acts as the single control point for switching AI platforms at runtime.

@@ -23,9 +23,11 @@ sequenceDiagram
     GAuth-->>Watcher: Returns Auth Code/Token
     Watcher->>GAPI: service.userinfo().get()
     GAPI-->>Watcher: Returns user email
-    Watcher->>DB: SessionLocal (Save/Update token_data)
+    Watcher->>User: Prompt for Drive Folder ID
+    User-->>Watcher: Enters Folder ID
+    Watcher->>DB: Save/Update token_data & drive_folder_id
     DB-->>Watcher: Commit
-    Watcher-->>User: "Registered new user: email@example.com"
+    Watcher-->>User: "Registered new user: email@example.com watching folder: <ID>"
 ```
 
 ## 2. File Upload & Processing Flow
@@ -63,9 +65,13 @@ sequenceDiagram
             Note right of Consumer: _run_pipeline()
             Consumer->>GDrive: _download_file() (get_media)
             GDrive-->>Consumer: Raw Bytes
-            Consumer->>Consumer: _parse_with_mineru() (Mock Parser)
+            Consumer->>Consumer: _convert_to_pdf() (LibreOffice)
+            Consumer->>Consumer: _parse_with_mineru() (MinerU)
             Consumer->>AI: extract_invoice_data(parsed_text)
-            AI-->>Consumer: Extracted JSON
+            AI-->>Consumer: Validated JSON
+            Consumer->>GDrive: Check/Create 'output' Folder
+            Consumer->>GDrive: Check/Create Spreadsheet
+            Consumer->>GDrive: Append Row to Spreadsheet
         end
 
         Consumer->>DB: Update status=PROCESSED, extracted_data=JSON

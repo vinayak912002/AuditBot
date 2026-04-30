@@ -12,13 +12,14 @@ graph TD
     
     Found -- Yes --> MarkProcessing[Status = PROCESSING]
     
-    subgraph Pipeline [4-Step Pipeline]
+    subgraph Pipeline [Pipeline with Headless Conversion]
         Step1[1. Normalization: Download from GDrive]
+        Step1b[1b. Conversion: Headless LibreOffice to PDF]
         Step2[2. Parsing: MinerU PDF-to-Markdown]
-        Step3[3. Extraction: AI LLM Extraction]
-        Step4[4. Storing: Update DB/Sheets]
+        Step3[3. Extraction: AI LLM Extraction & Pydantic Validation]
+        Step4[4. Storing: Create/Find 'output' folder & Append to Sheet]
         
-        Step1 --> Step2 --> Step3 --> Step4
+        Step1 --> Step1b --> Step2 --> Step3 --> Step4
     end
     
     MarkProcessing --> Step1

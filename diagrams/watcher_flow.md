@@ -5,7 +5,7 @@ graph TD
     Start([Start Watcher]) --> PollUsers[Get All Registered Users from DB]
     PollUsers --> ForEachUser{For Each User}
     ForEachUser --> RefreshToken[Check & Refresh OAuth Token]
-    RefreshToken --> ScanDrive[Scan Configured Drive Folder]
+    RefreshToken --> ScanDrive[Scan User's Specific drive_folder_id]
     ScanDrive --> NewFiles{New Files Found?}
     
     NewFiles -- Yes --> IdempotencyCheck{Exists in DB?}
